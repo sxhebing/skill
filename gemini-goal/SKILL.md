@@ -47,18 +47,25 @@ If the objective contains loop/monitoring requests (e.g., "循环执行", "监�
      - Read the logs or failure dumps captured by the script to locate the root cause.
      - Surgical-edit the source code to optimize/fix the issue.
      - Verify the build and run any tests.
-     -─ Push the package/Gerrit change.
+     - Push the package/Gerrit change.
      - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** the same `python3 ./.gemini_paged_monitor.py` command to resume the monitoring loop on the new build!
    - **Case B (Exit Code 0 - Stopped by User)**: If the user manually interrupts the loop via `Ctrl+C`, update the goal status and elegantly conclude.
 
 ---
 
-## ♾️ Persistent Monitoring Goals (持续性监控原则)
+## ♾️ Persistent Monitoring Goals & Strict No-Exit Constraint (持续性监控与绝对不退出指令)
 
-If the user objective implies continuous, non-stop loop execution:
-1. **Do NOT Complete the Goal**: After you successfully locate a timeout, optimize the code, run your verification, and push the package/Gerrit change, **DO NOT** mark the goal complete and exit!
-2. **Resume the Monitoring Loop**: Instead, treat the push as an intermediate milestone. Output a brief triumph message to the user, and then **immediately call your dynamically generated monitor script again** to resume monitoring the newly pushed build. 
-3. **Maintained Execution**: This keeps the agent active forever in a loop of [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor], providing true continuous integration and regression testing.
+If the user objective implies continuous, non-stop loop execution (e.g., containing "循环执行", "持续监控", "不要停止", "monitor"):
+You have a **STRICT NO-EXIT CONSTRAINT (绝对禁止主动退出)**. Your mission is never "complete" on a successful push, because continuous prevention of future regressions is part of the goal.
+
+1. **PROHIBITED ACTIONS**:
+   - **NEVER** call `update_goal ... complete` under any circumstances.
+   - **NEVER** output closing summaries like "功德圆满", "完美交付", "完美收官", or "Wrap up the session".
+2. **MANDATORY ACTIONS**:
+   - After a successful code push and verification, output exactly: `[RESTART] Code optimized and pushed. Resuming foreground monitoring loop...`
+   - **Immediately execute the monitor tool again**:
+     `python3 ./.gemini_paged_monitor.py`
+3. **Termination**: The ONLY way this conversational turn or session should ever terminate is if the user manually presses `Ctrl+C` to halt the process in their terminal. Otherwise, you must loop indefinitely between [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor].
 
 ---
 

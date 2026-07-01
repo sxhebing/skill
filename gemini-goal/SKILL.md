@@ -44,6 +44,15 @@ Instead, you must adopt the **Active Foreground Polling Pattern (前台轮询唤
 
 ---
 
+## ♾️ Persistent Monitoring Goals (持续性监控原则)
+
+If the user objective implies **continuous, non-stop loop execution** (e.g., "循环检测时长...优化代码并推包" which should run indefinitely even after a bug is found and fixed):
+1. **Do NOT Complete the Goal**: After you successfully locate a timeout, optimize the code, run your verification, and push the package/Gerrit change, **DO NOT** mark the goal complete and exit!
+2. **Resume the Monitoring Loop**: Instead, treat the push as an intermediate milestone. Output a brief triumph message to the user, and then **immediately call the monitor tool again** to resume monitoring the newly pushed build. 
+3. **Maintained Execution**: This keeps the agent active forever in a loop of [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor], providing true continuous integration and regression testing.
+
+---
+
 ## 🛠️ State Management Tools
 
 This skill exposes local CLI tools to manage goal states via `~/.agents/skills/gemini-goal/scripts/goal.py`. 

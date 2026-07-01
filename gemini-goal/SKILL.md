@@ -21,51 +21,41 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 
 ---
 
-## 🔄 Foreground Monitoring Loop (前台循环监测机制 - 动态生成脚本)
+## 🔄 Foreground Monitoring Loop & Self-Healing State Machine (前台监测与自愈五步状态机 - CRITICAL)
 
-If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor", "every X seconds"):
-**DO NOT use any hardcoded monitoring scripts.** You must dynamically author a custom monitoring tool tailored precisely to the user's request.
+If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor"):
+You must execute the dedicated, zero-token monitor tool in the **foreground** and strictly adhere to the following **5-step state machine**. You are **PROHIBITED** from skipping any step or jumping directly to the restart phase!
 
-1. **Dynamically Write the Tailored Monitor Script**:
-   - Write a custom python script (e.g., `./.gemini_paged_monitor.py`) to handle the loop.
-   - You must enforce these strict coding constraints on the generated python script:
-     * **Heartbeat logs**: Print a clear, numbered heartbeat log to stdout during each iteration (e.g., `[Check X] Current value: ...`) so the terminal remains active and the platform session does not trigger idle timeouts.
-     * **Robust Encoding Handling (字符集容错保护 - CRITICAL)**: When reading from subprocess stdout or pipes (like `adb logcat`), you **MUST** decode bytes using `errors='replace'` or `errors='ignore'` (e.g., `line.decode('utf-8', errors='replace')` or reading stream with `errors='replace'`). This ensures that invalid/binary bytes (e.g. `0xe0`, non-UTF8 garbage) never trigger an uncaught `UnicodeDecodeError` and crash the monitor.
-     * **Specific Trigger Condition**: Read logcat, query APIs, or check files exactly as requested by the user.
-     * **Anomaly Trigger**: If the specific anomaly condition is met, print `!!! TRIGGER_ANOMALY: <details> !!!` to stdout and **exit immediately with code 101**.
-     * **Graceful Exit**: Handle `KeyboardInterrupt` (Ctrl+C) and exit with code 0.
-   - Save and make the script executable.
+### 🧭 Phase 1: Active Polling
+- Run the following command in the foreground:
+  `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
+- This script runs the loop and prints heartbeats. No tokens are consumed during successful checks.
 
-2. **Launch the Dynamic Monitor in Foreground**:
-   - Run the dynamically generated script:
-     `python3 ./.gemini_paged_monitor.py`
-   - Since it is run in the foreground, the Gemini session remains active. **No tokens are consumed** during successful check iterations, keeping the session extremely efficient.
+### 🧭 Phase 2: Anomaly Handler (Exit Code 101)
+If the monitor script exits with **exit code 101 (Anomaly Detected)**, you must execute these **5 steps sequentially**. You must NOT write any concluding report, and you must NOT call `update_goal ... complete`.
 
-3. **Handle the Monitor Exit Code**:
-   - **Case A (Exit Code 101 - Anomaly Detected)**: If the script exits with code 101, it means the user's specific anomaly was triggered. 
-     You must **IMMEDIATELY** start the deep self-healing cycle in the same session:
-     - Read the logs or failure dumps captured by the script to locate the root cause.
-     - Surgical-edit the source code to optimize/fix the issue.
-     - Verify the build and run any tests.
-     - Push the package/Gerrit change.
-     - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** the same `python3 ./.gemini_paged_monitor.py` command to resume the monitoring loop on the new build!
-   - **Case B (Exit Code 0 - Stopped by User)**: If the user manually interrupts the loop via `Ctrl+C`, update the goal status and elegantly conclude.
+*   **STEP 1 [DIAGNOSE]**: Read and deeply analyze the logs in `recovery_timeout_dump.log` to pinpoint the exact line of code, function, or timing conflict causing the recovery delay.
+*   **STEP 2 [FIX]**: Locate the relevant source file in the repository and apply a surgical, robust code modification/optimization to resolve the delay.
+*   **STEP 3 [VERIFY]**: Run the project's build, compilation, and test suite to ensure that your code change is syntactically correct and compiles without errors.
+*   **STEP 4 [PUSH]**: Commit and push your optimized code to Gerrit/Git as an intermediate milestone.
+*   **STEP 5 [RESTART LOOP]**: ONLY after Step 1, 2, 3, and 4 are fully completed, you must output exactly:
+    `[RESTART] Code optimized and pushed. Resuming foreground monitoring loop...`
+    And immediately execute the monitor tool again to resume tracking:
+    `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
+
+If the user manually interrupts the loop via `Ctrl+C` (exit code 0), only then you may elegantly update the goal status to complete and conclude.
 
 ---
 
-## ♾️ Persistent Monitoring Goals & Strict No-Exit Constraint (持续性监控与绝对不退出指令)
+## 📡 Dual-Tuner Architecture & Bus Contention Rule (双高频头总线冲突诊断铁律)
 
-If the user objective implies continuous, non-stop loop execution (e.g., containing "循环执行", "持续监控", "不要停止", "monitor"):
-You have a **STRICT NO-EXIT CONSTRAINT (绝对禁止主动退出)**. Your mission is never "complete" on a successful push, because continuous prevention of future regressions is part of the goal.
+TDA7707 is a **Dual-Tuner (双高频头) architecture** where Tuner 1 is dedicated to the primary audio path (Main) and Tuner 2 is dedicated to Background Scan (BGS). 
 
-1. **PROHIBITED ACTIONS**:
-   - **NEVER** call `update_goal ... complete` under any circumstances.
-   - **NEVER** output closing summaries like "功德圆满", "完美交付", "完美收官", or "Wrap up the session".
-2. **MANDATORY ACTIONS**:
-   - After a successful code push and verification, output exactly: `[RESTART] Code optimized and pushed. Resuming foreground monitoring loop...`
-   - **Immediately execute the monitor tool again**:
-     `python3 ./.gemini_paged_monitor.py`
-3. **Termination**: The ONLY way this conversational turn or session should ever terminate is if the user manually presses `Ctrl+C` to halt the process in their terminal. Otherwise, you must loop indefinitely between [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor].
+Therefore, you must strictly adhere to the following physical facts during analysis:
+1. **NO RF Frontend Interference**: BGS scanning on Tuner 2 does **NOT** physically block the RF/LO path of Tuner 1 (Main). 
+2. **GENUINE SOFTWARE BUG**: Any recovery delay (> 8s) that occurs adjacent to or during a BGS scan (e.g., a massive `FICAfterLock` delay like 11.9s) is a **GENUINE software bug** (not a hardware constraint).
+3. **SPI/I2C Bus Contention Root Cause**: These delays are typically caused by **SPI/I2C Bus Contention** or **Command Pacing Conflicts** where high-frequency BGS scan commands on the shared control bus block or delay the Main path's commands (such as packet reading or sync state checks).
+4. **Optimization Action**: You **MUST** search the codebase to optimize the command priorities, insert cooperative yields/sleeps in the BGS command loop, or adjust SPI transfer pacing to guarantee that the Main path's control commands are never starved. Do **NOT** treat BGS-adjacent delays as unfixable hardware exceptions!
 
 ---
 

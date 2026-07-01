@@ -21,35 +21,26 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 
 ---
 
-## 🔄 Foreground Monitoring Loop (前台循环检测模式)
+## 🔄 Foreground Monitoring Loop (前台循环监测机制 - 0 Token 挂载)
 
 If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor"):
-**DO NOT** run a background process that hides output from the user, and **DO NOT** run an infinite bash loop that hangs forever without yielding.
+You must execute the dedicated, zero-token monitor tool in the **foreground** inside the same session:
 
-Instead, you must adopt the **Active Foreground Polling Pattern (前台轮询唤醒机制)**:
+1. **Launch the Foreground Monitor**:
+   - Run the following command:
+     `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
+   - This script runs an active loop in the foreground, printing heartbeats to stdout so the session remains active and alive without hitting idle timeouts.
+   - While the tool is running, **no tokens are consumed** during successful checks, keeping the session efficient.
 
-1. **Write a Paged Monitor Script** (e.g., `gemini_paged_monitor.sh`):
-   - The script runs a loop for a fixed number of iterations (e.g., 20-30 iterations, sleeping 3 seconds per check).
-   - In each iteration, it **MUST print a heartbeat log** to stdout (e.g., `[Check 1/30] Recovery: 4210ms`) so that the terminal stays alive and does not trigger idle timeouts.
-   - If the trigger condition is met (e.g., recovery duration > 8000ms), the script must print a clear trigger token: `!!! TRIGGER_ANOMALY: <details> !!!` and **exit immediately with code 0**.
-   - If the paged iterations finish without any trigger, exit with code 99 (No anomaly found in this page).
-
-2. **Execute the Script in the Foreground**:
-   - Call `run_shell_command` to execute the script in the **foreground** (do NOT use `is_background: true`).
-   - The user will see the heartbeat output and know the skill is actively executing the loop.
-
-3. **Handle the Tool Return**:
-   - **Case A (Triggered)**: If the tool output contains `TRIGGER_ANOMALY`, immediately transition to the **Analysis, Fix, and Push** phase within the same conversational turn! Read the dumped logs, locate the root cause, edit the source code, verify, and push.
-   - **Case B (No Anomaly)**: If the script exits with code 99 (no anomaly found), write a brief thought explaining that the current check cycle is clean, and **immediately run the tool again** to start the next polling page. This keeps the loop active within the execution of the skill itself!
-
----
-
-## ♾️ Persistent Monitoring Goals (持续性监控原则)
-
-If the user objective implies **continuous, non-stop loop execution** (e.g., "循环检测时长...优化代码并推包" which should run indefinitely even after a bug is found and fixed):
-1. **Do NOT Complete the Goal**: After you successfully locate a timeout, optimize the code, run your verification, and push the package/Gerrit change, **DO NOT** mark the goal complete and exit!
-2. **Resume the Monitoring Loop**: Instead, treat the push as an intermediate milestone. Output a brief triumph message to the user, and then **immediately call the monitor tool again** to resume monitoring the newly pushed build. 
-3. **Maintained Execution**: This keeps the agent active forever in a loop of [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor], providing true continuous integration and regression testing.
+2. **Handle the Monitor Exit Code**:
+   - **Case A (Exit Code 101 - Anomaly Detected)**: If `monitor.py` exits with code 101, it means recovery duration exceeded 8 seconds and the logs are dumped to `recovery_timeout_dump.log`. 
+     You must **IMMEDIATELY** start the deep self-healing cycle in the same session:
+     - Read the logs in `recovery_timeout_dump.log` to locate the root cause.
+     - Surgical-edit the source code to optimize/fix the issue.
+     - Verify the build and run any tests.
+     - Push the package/Gerrit change.
+     - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py` to resume the loop!
+   - **Case B (Exit Code 0 - Stopped by User)**: If the user manually interrupts the loop via `Ctrl+C`, update the goal status and elegantly conclude.
 
 ---
 

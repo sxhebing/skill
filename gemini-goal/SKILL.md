@@ -21,26 +21,43 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 
 ---
 
-## 🔄 Foreground Monitoring Loop (前台循环监测机制 - 0 Token 挂载)
+## 🔄 Foreground Monitoring Loop (前台循环监测机制 - 动态生成脚本)
 
-If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor"):
-You must execute the dedicated, zero-token monitor tool in the **foreground** inside the same session:
+If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor", "every X seconds"):
+**DO NOT use any hardcoded monitoring scripts.** You must dynamically author a custom monitoring tool tailored precisely to the user's request.
 
-1. **Launch the Foreground Monitor**:
-   - Run the following command:
-     `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
-   - This script runs an active loop in the foreground, printing heartbeats to stdout so the session remains active and alive without hitting idle timeouts.
-   - While the tool is running, **no tokens are consumed** during successful checks, keeping the session efficient.
+1. **Dynamically Write the Tailored Monitor Script**:
+   - Write a custom python script (e.g., `./.gemini_paged_monitor.py`) to handle the loop.
+   - You must enforce these strict coding constraints on the generated python script:
+     * **Heartbeat logs**: Print a clear, numbered heartbeat log to stdout during each iteration (e.g., `[Check X] Current value: ...`) so the terminal remains active and the platform session does not trigger idle timeouts.
+     * **Specific Trigger Condition**: Read logcat, query APIs, or check files exactly as requested by the user.
+     * **Anomaly Trigger**: If the specific anomaly condition is met, print `!!! TRIGGER_ANOMALY: <details> !!!` to stdout and **exit immediately with code 101**.
+     * **Graceful Exit**: Handle `KeyboardInterrupt` (Ctrl+C) and exit with code 0.
+   - Save and make the script executable.
 
-2. **Handle the Monitor Exit Code**:
-   - **Case A (Exit Code 101 - Anomaly Detected)**: If `monitor.py` exits with code 101, it means recovery duration exceeded 8 seconds and the logs are dumped to `recovery_timeout_dump.log`. 
+2. **Launch the Dynamic Monitor in Foreground**:
+   - Run the dynamically generated script:
+     `python3 ./.gemini_paged_monitor.py`
+   - Since it is run in the foreground, the Gemini session remains active. **No tokens are consumed** during successful check iterations, keeping the session extremely efficient.
+
+3. **Handle the Monitor Exit Code**:
+   - **Case A (Exit Code 101 - Anomaly Detected)**: If the script exits with code 101, it means the user's specific anomaly was triggered. 
      You must **IMMEDIATELY** start the deep self-healing cycle in the same session:
-     - Read the logs in `recovery_timeout_dump.log` to locate the root cause.
+     - Read the logs or failure dumps captured by the script to locate the root cause.
      - Surgical-edit the source code to optimize/fix the issue.
      - Verify the build and run any tests.
      - Push the package/Gerrit change.
-     - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py` to resume the loop!
+     - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** the same `python3 ./.gemini_paged_monitor.py` command to resume the monitoring loop on the new build!
    - **Case B (Exit Code 0 - Stopped by User)**: If the user manually interrupts the loop via `Ctrl+C`, update the goal status and elegantly conclude.
+
+---
+
+## ♾️ Persistent Monitoring Goals (持续性监控原则)
+
+If the user objective implies continuous, non-stop loop execution:
+1. **Do NOT Complete the Goal**: After you successfully locate a timeout, optimize the code, run your verification, and push the package/Gerrit change, **DO NOT** mark the goal complete and exit!
+2. **Resume the Monitoring Loop**: Instead, treat the push as an intermediate milestone. Output a brief triumph message to the user, and then **immediately call your dynamically generated monitor script again** to resume monitoring the newly pushed build. 
+3. **Maintained Execution**: This keeps the agent active forever in a loop of [Monitor ➔ Catch ➔ Fix ➔ Push ➔ Resume Monitor], providing true continuous integration and regression testing.
 
 ---
 

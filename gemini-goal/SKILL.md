@@ -30,6 +30,7 @@ If the objective contains loop/monitoring requests (e.g., "循环执行", "监�
    - Write a custom python script (e.g., `./.gemini_paged_monitor.py`) to handle the loop.
    - You must enforce these strict coding constraints on the generated python script:
      * **Heartbeat logs**: Print a clear, numbered heartbeat log to stdout during each iteration (e.g., `[Check X] Current value: ...`) so the terminal remains active and the platform session does not trigger idle timeouts.
+     * **Robust Encoding Handling (字符集容错保护 - CRITICAL)**: When reading from subprocess stdout or pipes (like `adb logcat`), you **MUST** decode bytes using `errors='replace'` or `errors='ignore'` (e.g., `line.decode('utf-8', errors='replace')` or reading stream with `errors='replace'`). This ensures that invalid/binary bytes (e.g. `0xe0`, non-UTF8 garbage) never trigger an uncaught `UnicodeDecodeError` and crash the monitor.
      * **Specific Trigger Condition**: Read logcat, query APIs, or check files exactly as requested by the user.
      * **Anomaly Trigger**: If the specific anomaly condition is met, print `!!! TRIGGER_ANOMALY: <details> !!!` to stdout and **exit immediately with code 101**.
      * **Graceful Exit**: Handle `KeyboardInterrupt` (Ctrl+C) and exit with code 0.
@@ -46,7 +47,7 @@ If the objective contains loop/monitoring requests (e.g., "循环执行", "监�
      - Read the logs or failure dumps captured by the script to locate the root cause.
      - Surgical-edit the source code to optimize/fix the issue.
      - Verify the build and run any tests.
-     - Push the package/Gerrit change.
+     -─ Push the package/Gerrit change.
      - **CRITICAL**: After the successful push, do NOT mark the goal complete! **Immediately re-run** the same `python3 ./.gemini_paged_monitor.py` command to resume the monitoring loop on the new build!
    - **Case B (Exit Code 0 - Stopped by User)**: If the user manually interrupts the loop via `Ctrl+C`, update the goal status and elegantly conclude.
 

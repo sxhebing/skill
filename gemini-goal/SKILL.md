@@ -21,23 +21,26 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 
 ---
 
-## 🔄 Recursive & Looping Goals (循环与递归监控目标)
+## 🔄 Foreground Monitoring Loop (前台循环检测模式)
 
-If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor", "every X seconds"):
-**NEVER** try to loop inside your active conversational turns (which will exhaust your token budget, hit timeouts, and hang).
+If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor"):
+**DO NOT** run a background process that hides output from the user, and **DO NOT** run an infinite bash loop that hangs forever without yielding.
 
-Instead, you must adopt the **Recursive CLI Invocation Pattern (递归调用机制)**:
-1. **Write a Local Daemon Script** (e.g., `gemini_loop_daemon.sh`):
-   - This script runs the loop locally (e.g., in `while true`).
-   - It performs the check (e.g., check log output, measure recovery duration).
-2. **Trigger Headless AI on Condition Match**:
-   - If the condition is met (e.g., recovery duration > 8s), the daemon script must invoke Gemini CLI headlessly using the `-p` (prompt) and `-y` (YOLO) flags to analyze and fix the code:
-     ```bash
-     gemini -y -p "My background monitor detected a recovery timeout of ${duration} seconds. Analyze the logs in '${log_path}', locate the root cause of the timeout, optimize the code, and push the package/Gerrit change."
-     ```
-3. **Run the Daemon in Background**:
-   - Start the daemon script in the background using `run_shell_command` with `is_background=true` so it runs continuously and independently.
-   - Explain to the user that the background loop has been successfully registered and will automatically trigger the AI to fix and push code only when an anomaly is detected.
+Instead, you must adopt the **Active Foreground Polling Pattern (前台轮询唤醒机制)**:
+
+1. **Write a Paged Monitor Script** (e.g., `gemini_paged_monitor.sh`):
+   - The script runs a loop for a fixed number of iterations (e.g., 20-30 iterations, sleeping 3 seconds per check).
+   - In each iteration, it **MUST print a heartbeat log** to stdout (e.g., `[Check 1/30] Recovery: 4210ms`) so that the terminal stays alive and does not trigger idle timeouts.
+   - If the trigger condition is met (e.g., recovery duration > 8000ms), the script must print a clear trigger token: `!!! TRIGGER_ANOMALY: <details> !!!` and **exit immediately with code 0**.
+   - If the paged iterations finish without any trigger, exit with code 99 (No anomaly found in this page).
+
+2. **Execute the Script in the Foreground**:
+   - Call `run_shell_command` to execute the script in the **foreground** (do NOT use `is_background: true`).
+   - The user will see the heartbeat output and know the skill is actively executing the loop.
+
+3. **Handle the Tool Return**:
+   - **Case A (Triggered)**: If the tool output contains `TRIGGER_ANOMALY`, immediately transition to the **Analysis, Fix, and Push** phase within the same conversational turn! Read the dumped logs, locate the root cause, edit the source code, verify, and push.
+   - **Case B (No Anomaly)**: If the script exits with code 99 (no anomaly found), write a brief thought explaining that the current check cycle is clean, and **immediately run the tool again** to start the next polling page. This keeps the loop active within the execution of the skill itself!
 
 ---
 

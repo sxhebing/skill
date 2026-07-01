@@ -1,25 +1,25 @@
-# Gemini-Goal Agent Skill 🎯
+# My AI Agent Skills 🎯
 
-Provides structured long-term goal management for Gemini CLI / Codex. Enforces a rigorous **Completion Audit** and **Blocked Audit** framework to prevent premature task termination and guarantee objective verification.
+A collection of custom, highly optimized skills for Gemini CLI / Codex. These skills extend the agent's capabilities with specialized workflows, state machines, and tools.
 
-## 📦 Installation
+## 📦 Available Skills
 
-To install this skill globally in your Gemini CLI configuration:
+*   **[gemini-goal](./skills/gemini-goal)**: Provides structured, long-term goal management for Gemini CLI. Enforces a rigorous **Completion Audit** and **Blocked Audit** framework to prevent premature task termination and guarantee objective verification. Supports loop execution and recursive background monitoring natively.
+
+## 📥 Installation
+
+To install any of the skills globally in your Gemini CLI environment:
 
 1. Clone or download this repository.
-2. Place it under your global personal skills directory:
+2. Create your global skills directory if it doesn't exist:
    ```bash
-   mkdir -p ~/.agents/skills/gemini-goal
-   # Copy SKILL.md and scripts directory
-   cp -r * ~/.agents/skills/gemini-goal/
+   mkdir -p ~/.agents/skills/
+   ```
+3. Copy the specific skill directory from this repo (e.g. `skills/gemini-goal/`) to your global path:
+   ```bash
+   cp -r skills/gemini-goal/ ~/.agents/skills/gemini-goal/
    ```
 
-## ⚡ How to Use
+## 🚀 Future Additions
 
-Simply start your prompt in Gemini CLI with the `/gemini-goal` prefix:
-
-```bash
-/gemini-goal Implement a new robust feature and verify with unit tests
-```
-
-Gemini CLI will semantically route your request to the `gemini-goal` skill, automatically initialize the goal state manager in the background, and execute your goal under strict verification audits!
+This repository is structured to support multiple skills. More advanced workflows, developer templates, and automations will be added here in their respective subfolders under `skills/`!

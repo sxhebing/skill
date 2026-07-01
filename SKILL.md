@@ -21,6 +21,26 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 
 ---
 
+## 🔄 Recursive & Looping Goals (循环与递归监控目标)
+
+If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor", "every X seconds"):
+**NEVER** try to loop inside your active conversational turns (which will exhaust your token budget, hit timeouts, and hang).
+
+Instead, you must adopt the **Recursive CLI Invocation Pattern (递归调用机制)**:
+1. **Write a Local Daemon Script** (e.g., `gemini_loop_daemon.sh`):
+   - This script runs the loop locally (e.g., in `while true`).
+   - It performs the check (e.g., check log output, measure recovery duration).
+2. **Trigger Headless AI on Condition Match**:
+   - If the condition is met (e.g., recovery duration > 8s), the daemon script must invoke Gemini CLI headlessly using the `-p` (prompt) and `-y` (YOLO) flags to analyze and fix the code:
+     ```bash
+     gemini -y -p "My background monitor detected a recovery timeout of ${duration} seconds. Analyze the logs in '${log_path}', locate the root cause of the timeout, optimize the code, and push the package/Gerrit change."
+     ```
+3. **Run the Daemon in Background**:
+   - Start the daemon script in the background using `run_shell_command` with `is_background=true` so it runs continuously and independently.
+   - Explain to the user that the background loop has been successfully registered and will automatically trigger the AI to fix and push code only when an anomaly is detected.
+
+---
+
 ## 🛠️ State Management Tools
 
 This skill exposes local CLI tools to manage goal states via `~/.agents/skills/gemini-goal/scripts/goal.py`. 
@@ -61,27 +81,3 @@ Do not call `update_goal ... blocked` the first time an error or blocker appears
 1. **The 3-Turn Try Principle (三击不中原则)**: You must attempt to solve the blocker using at least **3 consecutive turns of different strategies** (such as looking for different files, compiling with alternative flags, or fixing local environments via `env_doctor.py`).
 2. **True Impasse**: Only set the status to `blocked` when you are at a complete dead-end and cannot make any progress without user-provided details or external state changes.
 3. **Never Block on Difficulty**: Never mark a goal `blocked` merely because the task is slow, difficult, uncertain, or could benefit from some casual clarification.
-
----
-
-## 🧭 Operational Workflow
-
-```
-[User Goal Request] 
-       │
-       ▼
-1. Run "goal.py create '<goal>'" to initialize state.
-       │
-       ▼
-2. Analyze context, break down requirements.
-       │
-       ▼
-3. Work iteratively: Plan ➔ Act ➔ Validate (Loop).
-       │
-       ▼
-4. Perform the Completion Audit (Verify files & tests).
-       ├─────────────────────────────────┐
-       ▼ (Pass)                          ▼ (Fail / Blocked)
-5a. Run "goal.py update complete"   5b. Try 3 times. If still stuck,
-    & report final status.              run "goal.py update blocked".
-```

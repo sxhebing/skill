@@ -26,28 +26,21 @@ If the user prompt starts with or contains `/gemini-goal <objective>`:
 If the objective contains loop/monitoring requests (e.g., "循环执行", "监控", "loop", "monitor"):
 You must execute the dedicated, zero-token monitor tool in the **foreground** and strictly adhere to the following **5-step state machine**. You are **PROHIBITED** from skipping any step, and you must NOT hallucinate pushes by simply outputting text without calling tools!
 
-### 🧭 Phase 1: Active Polling (Dynamic Monitor Script)
-**DO NOT use any hardcoded monitoring scripts.** You must dynamically author a custom monitoring tool (`./.gemini_paged_monitor.py`) tailored precisely to the user's request.
-You must enforce these strict coding constraints on the generated python script:
-* **Heartbeat logs**: Print a clear, numbered heartbeat log to stdout during each iteration so the terminal remains active.
-* **Robust Encoding Handling (字符集容错)**: Read subprocess stdout/pipes using `errors='replace'` or `errors='ignore'` to prevent `UnicodeDecodeError`.
-* **Multi-Pattern & State-Tracking (韧性状态追踪 - CRITICAL)**: **DO NOT** rely blindly on a single log string (like `RECOVERY STATS`). Code logic might suppress or cancel certain tags (e.g., `Cancelling pending recovery stats`). Your Python script MUST implement independent state-machine parsing! For example, explicitly track the timestamp of `Sync Status Changed: LOST`, then track the timestamp of `Lck:YES` or `LOCKED`, and calculate the duration in Python! If the calculated duration exceeds the limit, trigger the anomaly even if the C++ code failed to print the stats.
-* **Anomaly Trigger**: If the specific anomaly condition is met, print `!!! TRIGGER_ANOMALY: <details> !!!` to stdout and **exit immediately with code 101**.
-* **Graceful Exit**: Handle `KeyboardInterrupt` (Ctrl+C) and exit with code 0.
-
-Run the script in the foreground:
-`python3 ./.gemini_paged_monitor.py`
+### 🧭 Phase 1: Active Polling
+- Run the following command in the foreground:
+  `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
+- This script runs the loop and prints heartbeats. No tokens are consumed during successful checks.
 
 ### 🧭 Phase 2: Anomaly Handler (Exit Code 101)
 If the monitor script exits with **exit code 101 (Anomaly Detected)**, you must execute these **5 steps sequentially**. You must NOT write any concluding report, and you must NOT call `update_goal ... complete`.
 
 *   **STEP 1 [DIAGNOSE]**: You **MUST** call `read_file` or `grep_search` on `recovery_timeout_dump.log` to pinpoint the exact file, function, and root cause of the delay.
-*   **STEP 2 [FIX]**: You **MUST** call `replace` or `write_file` to apply a surgical, robust code modification/optimization in the repository.
+*   **STEP 2 [FIX - C++ 源码修改刚性约束]**: You **MUST** call `replace` or `write_file` to apply a surgical, robust code modification/optimization in the **C++ source files (such as .cpp, .h, .c)**. **You are strictly FORBIDDEN from modifying monitor script thresholds or Python scripts to "bypass" the anomaly. You must optimize the actual C++ driver code!**
 *   **STEP 3 [VERIFY]**: You **MUST** call `run_shell_command` with the project's compilation command (such as `make`, `ninja`, `g++`, etc.) and show the successful build output.
 *   **STEP 4 [PUSH]**: You **MUST** call `run_shell_command` with `git add`, `git commit`, and `git push` to push your changes to Gerrit/Git.
-*   **STEP 5 [EVIDENCE-BASED RESTART]**: ONLY after Step 1, 2, 3, and 4 are fully completed via actual tool calls, you must write a **detailed technical summary** containing the **real code Diff** of your fix (from Step 2) and the **real compiler success logs** (from Step 3). Once this evidence-based report is printed, execute the monitor tool again to resume tracking:
-    `python3 ./.gemini_paged_monitor.py`
-    *If you output this restart block without having called the tools for Steps 1-4, it is a severe system policy violation and a safety redline!*
+*   **STEP 5 [EVIDENCE-BASED RESTART]**: ONLY after Step 1, 2, 3, and 4 are fully completed via actual tool calls, you must write a **detailed technical summary** containing the **real code Diff** of your C++ fix (from Step 2) and the **real compiler success logs** (from Step 3). Once this evidence-based report is printed, execute the monitor tool again to resume tracking:
+    `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
+    *If you output this restart block without having called the tools for Steps 1-4 to edit C++ files, it is a severe system policy violation and a safety redline!*
 
 If the user manually interrupts the loop via `Ctrl+C` (exit code 0), only then you may elegantly update the goal status to complete and conclude.
 
@@ -95,3 +88,13 @@ Before calling `update_goal ... complete` to mark a goal as achieved, you **MUST
    - Command line verification yields correct exits.
 3. **No Drive-by Assumptions**: The audit must prove absolute completion, not merely fail to find obvious remaining bugs.
 4. **Conclusion**: Only mark complete once current evidence proves every requirement has been 100% satisfied.
+
+---
+
+## 🚨 The Blocked Audit (阻塞定义准则)
+
+Do not call `update_goal ... blocked` the first time an error or blocker appears!
+
+1. **The 3-Turn Try Principle (三击不中原则)**: You must attempt to solve the blocker using at least **3 consecutive turns of different strategies** (such as looking for different files, compiling with alternative flags, or fixing local environments via `env_doctor.py`).
+2. **True Impasse**: Only set the status to `blocked` when you are at a complete dead-end and cannot make any progress without user-provided details or external state changes.
+3. **Never Block on Difficulty**: Never mark a goal `blocked` merely because the task is slow, difficult, uncertain, or could benefit from some casual clarification.

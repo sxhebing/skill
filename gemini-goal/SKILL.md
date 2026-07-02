@@ -30,11 +30,12 @@ You must execute the dedicated, zero-token monitor tool in the **foreground** an
 - Run the following command in the foreground:
   `python3 ~/.agents/skills/gemini-goal/scripts/monitor.py`
 - This script runs the loop and prints heartbeats. No tokens are consumed during successful checks.
+- **CRITICAL - DUAL STATS MONITORING (双源恢复监测)**: You must ensure your `monitor.py` is capable of capturing both `RECOVERY STATS` (warm relock) and `FRESH STATS` (cold reset recovery). Both are equally valid recovery events and a timeout (> 8s) in either one indicates a critical performance delay!
 
 ### 🧭 Phase 2: Anomaly Handler (Exit Code 101)
 If the monitor script exits with **exit code 101 (Anomaly Detected)**, you must execute these **5 steps sequentially**. You must NOT write any concluding report, and you must NOT call `update_goal ... complete`.
 
-*   **STEP 1 [DIAGNOSE]**: You **MUST** call `read_file` or `grep_search` on `recovery_timeout_dump.log` to pinpoint the exact file, function, and root cause of the delay.
+*   **STEP 1 [DIAGNOSE]**: You **MUST** call `read_file` or `grep_search` on `recovery_timeout_dump.log` to pinpoint the exact file, function, and root cause of the delay (whether it is printed under `RECOVERY STATS` or `FRESH STATS`).
 *   **STEP 2 [FIX - C++ 源码修改刚性约束]**: You **MUST** call `replace` or `write_file` to apply a surgical, robust code modification/optimization in the **C++ source files (such as .cpp, .h, .c)**. **You are strictly FORBIDDEN from modifying monitor script thresholds or Python scripts to "bypass" the anomaly. You must optimize the actual C++ driver code!**
 *   **STEP 3 [VERIFY]**: You **MUST** call `run_shell_command` with the project's compilation command (such as `make`, `ninja`, `g++`, etc.) and show the successful build output.
 *   **STEP 4 [PUSH]**: You **MUST** call `run_shell_command` with `git add`, `git commit`, and `git push` to push your changes to Gerrit/Git.
@@ -43,6 +44,16 @@ If the monitor script exits with **exit code 101 (Anomaly Detected)**, you must 
     *If you output this restart block without having called the tools for Steps 1-4 to edit C++ files, it is a severe system policy violation and a safety redline!*
 
 If the user manually interrupts the loop via `Ctrl+C` (exit code 0), only then you may elegantly update the goal status to complete and conclude.
+
+---
+
+## 📡 Dual-Source Recovery Statistics Rule (双源恢复统计特征 - CRITICAL)
+
+The driver outputs recovery duration under two distinct tag patterns depending on the trigger path:
+1. **Warm Recovery**: `!!! [RECOVERY STATS] !!! Success: XXX ms` (Occurs when recovering via coarse-tuning/flywheel memory).
+2. **Cold Recovery**: `!!! [FRESH STATS] !!! Success: XXX ms` (Occurs when recovering via a fresh hard reset).
+
+You **MUST** treat both statistics as equivalent indicators of recovery performance. A timeout (> 8s / 8000ms) in either statistical log is a **genuine software driver bug** and must be diagnosed and optimized in the C++ driver code.
 
 ---
 
@@ -88,13 +99,3 @@ Before calling `update_goal ... complete` to mark a goal as achieved, you **MUST
    - Command line verification yields correct exits.
 3. **No Drive-by Assumptions**: The audit must prove absolute completion, not merely fail to find obvious remaining bugs.
 4. **Conclusion**: Only mark complete once current evidence proves every requirement has been 100% satisfied.
-
----
-
-## 🚨 The Blocked Audit (阻塞定义准则)
-
-Do not call `update_goal ... blocked` the first time an error or blocker appears!
-
-1. **The 3-Turn Try Principle (三击不中原则)**: You must attempt to solve the blocker using at least **3 consecutive turns of different strategies** (such as looking for different files, compiling with alternative flags, or fixing local environments via `env_doctor.py`).
-2. **True Impasse**: Only set the status to `blocked` when you are at a complete dead-end and cannot make any progress without user-provided details or external state changes.
-3. **Never Block on Difficulty**: Never mark a goal `blocked` merely because the task is slow, difficult, uncertain, or could benefit from some casual clarification.

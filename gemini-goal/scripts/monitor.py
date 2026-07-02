@@ -8,7 +8,8 @@ import re
 
 print("=========================================================")
 print("🎯 Gemini Skill Foreground Loop Monitor Active...")
-print("📡 Monitoring logcat for 'RECOVERY STATS' (Threshold: > 8s)")
+print("📡 Monitoring logcat for 'RECOVERY STATS' & 'FRESH STATS'")
+print("📡 Threshold: > 8s (8000ms)")
 print("=========================================================")
 
 # Clear logcat initially to start fresh
@@ -20,8 +21,8 @@ last_processed_line = ""
 try:
     while True:
         check_count += 1
-        # Fetch last line of RECOVERY STATS
-        res = subprocess.run("adb logcat -v time -d | grep -i 'RECOVERY STATS' | tail -n 1", shell=True, capture_output=True, text=True)
+        # Fetch last line of RECOVERY STATS or FRESH STATS
+        res = subprocess.run("adb logcat -v time -d | grep -iE 'RECOVERY STATS|FRESH STATS' | tail -n 1", shell=True, capture_output=True, text=True)
         line = res.stdout.strip()
         
         if line and line != last_processed_line:
